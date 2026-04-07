@@ -171,22 +171,23 @@ class CloudSecEngine:
             penalty = -0.05 * self.step_count
             score = base_score + penalty
         
-        score = max(0.0, min(1.0, score))
+        score = max(0.01, min(0.99, score))
 
         self.reward_history.append({"value": score})
 
-        done = score >= 1.0 or self.step_count >= self.max_steps
+        done = score >= 0.95 or self.step_count >= self.max_steps
 
         return self._get_obs(), score, done, {}
 
     def _calculate_score(self):
         score = 0
-
-        if self.current_difficulty == "easy":   
-            if not self.state["s3_public"]:
-                return 1.0  
         
-            return 0.0
+        if self.current_difficulty == "easy":
+            # 🔥 ONLY ONE TASK → FIX S3
+            if not self.state["s3_public"]:
+                return 0.99   # FULL SCORE
+        
+            return 0.01
 
         elif self.current_difficulty == "medium":
             if self.state["iam_key_age"] == 0:
@@ -194,7 +195,7 @@ class CloudSecEngine:
             if self.state["iam_mfa_enabled"]:
                 score += 0.4
 
-            return min(score, 1.0)
+            return min(score, 0.99)
 
         elif self.current_difficulty == "hard":
             score = 0
@@ -217,9 +218,10 @@ class CloudSecEngine:
             if self.state["sg_port_22"] == "closed":
                 score += 0.1
         
-            return min(score, 1.0)
-
-        return 0.0
+            return min(score, 0.99)
+            
+        final_score = max(0.01, min(0.99, score))
+        return final_score
 
     def _progress_attack(self):
         self.time_step += 1
