@@ -14,7 +14,7 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 API_URL = os.getenv("API_URL")
 if not API_URL:
     print("[ERROR] API_URL not set.")
-    return
+    exit(1)
 
 TASK_NAME = "cloudsec_challenge"
 BENCHMARK = "cloud_security_v1"
