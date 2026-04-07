@@ -64,8 +64,11 @@ def get_state():
 
 @app.get("/grader")
 def get_grader():
+    raw_score = grade_task(env.current_difficulty, env.reward_history)
+    final_safe_score = max(0.01, min(0.99, float(raw_score)))
+    
     return {
-        "score": grade_task(env.current_difficulty, env.reward_history)
+        "score": round(final_safe_score, 3)
     }
 
 @app.get("/baseline")
