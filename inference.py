@@ -12,6 +12,9 @@ API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN")
 API_URL = os.getenv("API_URL")
+if not API_URL:
+    print("[ERROR] API_URL not set.")
+    return
 
 TASK_NAME = "cloudsec_challenge"
 BENCHMARK = "cloud_security_v1"
