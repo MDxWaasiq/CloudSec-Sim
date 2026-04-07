@@ -171,11 +171,11 @@ class CloudSecEngine:
             penalty = -0.05 * self.step_count
             score = base_score + penalty
         
-        score = max(0.0, min(1.0, score))
+        score = max(0.01, min(0.99, score))
 
         self.reward_history.append({"value": score})
 
-        done = score >= 0.98 or self.step_count >= self.max_steps
+        done = score >= 0.95 or self.step_count >= self.max_steps
 
         return self._get_obs(), score, done, {}
 
