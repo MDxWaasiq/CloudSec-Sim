@@ -183,12 +183,12 @@ class CloudSecEngine:
         score = 0
         
         if self.current_difficulty == "easy":
-            # 🔥 ONLY ONE TASK → FIX S3
             if not self.state["s3_public"]:
-                return 0.99   # FULL SCORE
-        
-            return 0.01
-
+                score = 0.99 # Strictly < 1
+            else:
+                score = 0.01
+            return max(0.01, min(score, 0.99))
+            
         elif self.current_difficulty == "medium":
             if self.state["iam_key_age"] == 0:
                 score += 0.4
