@@ -1,273 +1,186 @@
-from models import Observation, Action
+import gradio as gr
+import pandas as pd
+from server.environment import env
+from models import Action
+from baseline import run_baseline
+from fastapi import FastAPI
 import random
-from datetime import datetime
-        
+import time
+import json
+from tasks import grade_task
+import uvicorn
 
-class CloudSecEngine:
-    def __init__(self):
-        self.max_steps = 10
-        self.reset()
+app = FastAPI()
 
-    def reset(self, difficulty="easy"):
-        self.current_difficulty = difficulty.lower()
-        self.scenario = random.choice([
-            "brute_force",
-            "data_exposure",
-            "misconfig",
-            "normal"
-        ])
-        self.step_count = 0
-        self.reward_history = []
-        self.action_history = []
-
-        if self.current_difficulty == "easy":
-            self.state = {
-                "s3_public": True,
-                "s3_encryption": False,
-                "iam_key_age": 0,
-                "iam_mfa_enabled": True,
-                "sg_port_22": "closed",
-                "sg_port_80": "closed",
-                "rds_public": False
+@app.get("/tasks")
+def get_tasks():
+    return {
+        "tasks": [
+            {
+                "id": "easy",
+                "name": "S3 Public Access Fix",
+                "description": "Detect and restrict public S3 bucket access. Optional: enable encryption.",
+                "difficulty": "easy"
+            },
+            {
+                "id": "medium",
+                "name": "IAM Security Hardening",
+                "description": "Rotate old IAM keys and enforce MFA. Correct order improves score.",
+                "difficulty": "medium"
+            },
+            {
+                "id": "hard",
+                "name": "Network + Database Security",
+                "description": "Close exposed ports and secure RDS. Requires correct sequence of actions.",
+                "difficulty": "hard"
             }
+        ],
+        "action_schema": Action.model_json_schema()
+    }
 
-        elif self.current_difficulty == "medium":
-            self.state = {
-                "s3_public": random.choice([True, False]),
-                "s3_encryption": random.choice([False, True]),
-                "iam_key_age": random.randint(0, 150),  
-                "iam_mfa_enabled": random.choice([False, True]),
-                "sg_port_22": random.choice(["open", "closed"]),
-                "sg_port_80": random.choice(["open", "closed"]),
-                "rds_public": random.choice([True, False])
-            }
+@app.post("/reset")
+def reset_env(difficulty: str = "easy"): 
+    clean_diff = difficulty.lower() if difficulty else "easy"
+    obs = env.reset(clean_diff)
+    return obs.model_dump()
+
+
+@app.post("/step")
+def step_env(action: Action):
+    obs, reward, done, info = env.step(action)
+
+    return {
+        "observation": obs.model_dump(),  
+        "reward": float(reward),
+        "done": bool(done),
+        "info": info
+    }
+
+
+@app.get("/state")
+def get_state():
+    return env.get_state()
+
+
+@app.get("/grader")
+def get_grader():
+    return {
+        "score": grade_task(env.current_difficulty, env.reward_history)
+    }
+
+@app.get("/baseline")
+def get_baseline():
+    return {
+        "easy": run_baseline("easy"),
+        "medium": run_baseline("medium"),
+        "hard": run_baseline("hard"),
+    }
+#------------------------------------------------------------------------------------------------------------------------------------------------
+    
+def get_task_info(difficulty):
+    info = {
+        "Easy": "Fix S3 public access (1-step task)",
+        "Medium": "Fix IAM issues (key rotation + MFA)",
+        "Hard": "SOC investigation → analyze → respond"
+    }
+    return info[difficulty]
+
+
+def run_real_simulation(difficulty):
+    obs = env.reset(difficulty.lower())
+
+    history = []
+    done = False
+    step = 0
+    final_score = 0
+
+    max_steps = {"Easy": 4, "Medium": 6, "Hard": 8}
+
+    while not done and step < max_steps[difficulty]: 
+        r = {x["id"]: x["value"] for x in obs.resources}
+
+        if difficulty == "Easy":
+            if r.get("s3_public"):
+                action = Action(action_type="restrict_s3", resource_id="s3_public")
+            else:
+                break
+
+        elif difficulty == "Medium":
+            choices = []
+            if r.get("iam_key_age", 0) > 0:
+                choices.append(Action(action_type="rotate_key", resource_id="iam_key_age"))
+            
+            if not r.get("iam_mfa_enabled", True):
+                choices.append(Action(action_type="enable_mfa", resource_id="iam_mfa_enabled"))
+            
+            if choices:
+                action = random.choice(choices)
+            else:
+                break
 
         else:
-            self.state = {
-                "s3_public": random.choice([True, False]),
-                "s3_encryption": random.choice([False, True]),
-                "iam_key_age": random.randint(0, 200),
-                "iam_mfa_enabled": random.choice([False, True]),
-                "sg_port_22": random.choice(["open", "closed"]),
-                "sg_port_80": random.choice(["open", "closed"]),
-                "rds_public": random.choice([True, False])
-            }
-        self.hidden = {
-                "attack_detected": random.choice([True, False]),
-                "risk_score": random.randint(1, 10)
-            }    
-        self.timeline = []
-        self.time_step = 0
-        self.investigated = False
-        self.checked_ip = False
-        self.quarantined = False
-        self.escalated = False
-        self.ip_reputation = None
-        
-        self.timeline = []
-        self.time_step = 0
 
-        return self._get_obs()
-                
-    def _generate_logs(self):
+            if not getattr(env, "investigated", False):
+                action = Action(action_type="read_logs", resource_id="logs")
 
-    
-        def ts():
-            return datetime.utcnow().isoformat() + "Z"
-    
-        def ip():
-            return ".".join(str(random.randint(1, 255)) for _ in range(4))
-    
-        logs = []
-    
-        for event in self.timeline:
-            logs.append({
-                "timestamp": ts(),
-                "event": "attack_progression",
-                "ip": ip(),
-                "severity": "HIGH",
-                "message": event
-            })
-    
-        if self.state["sg_port_22"] == "open":
-            logs.append({
-                "timestamp": ts(),
-                "event": "ssh_failed",
-                "ip": ip(),
-                "severity": "HIGH",
-                "message": "Failed SSH login"
-            })
-    
-        if self.state["rds_public"]:
-            logs.append({
-                "timestamp": ts(),
-                "event": "db_access",
-                "ip": ip(),
-                "severity": "CRITICAL",
-                "message": "External DB access"
-            })
-            
-        noise = ["backup_done", "heartbeat_ok", "lambda_exec"]
-        for n in random.sample(noise, 2):
-            logs.append({
-                "timestamp": ts(),
-                "event": n,
-                "ip": ip(),
-                "severity": "LOW",
-                "message": "Normal activity"
-            })
-    
-        return logs
-    
-    def _get_obs(self):
-        return Observation(
-            resources=[{"id": k, "value": v} for k, v in self.state.items()],
-            instruction=f"[{self.current_difficulty.upper()}] Fix security issues",
-            alerts=self._generate_alerts(),  
-            logs=self._generate_logs()       
-        )
-    def step(self, action: Action):
-        self.step_count += 1
-        self._progress_attack()
-        a = action.action_type
-        r = action.resource_id
+            elif not getattr(env, "checked_ip", False):
+                action = Action(action_type="check_ip_reputation", resource_id="ip")
 
-        self.action_history.append(a)
+            elif getattr(env, "ip_reputation", None) == "malicious":
+                action = Action(action_type="quarantine_host", resource_id="host")
 
-        if a == "restrict_s3":
-            self.state["s3_public"] = False
-        elif a == "enable_encryption":
-            self.state["s3_encryption"] = True
-        elif a == "rotate_key":
-            self.state["iam_key_age"] = 0
-        elif a == "enable_mfa":
-            self.state["iam_mfa_enabled"] = True
-        elif a == "close_port_22":
-            self.state["sg_port_22"] = "closed"
-        elif a == "close_port_80":
-            self.state["sg_port_80"] = "closed"
-        elif a == "secure_rds":
-            self.state["rds_public"] = False
-        elif a == "read_logs":
-            self.investigated = True
-        
-        elif a == "check_ip_reputation":
-            self.ip_reputation = random.choice(["malicious", "suspicious", "clean"])
-            self.checked_ip = True
-        
-        elif a == "quarantine_host":
-            self.state["sg_port_22"] = "closed"
-            self.state["sg_port_80"] = "closed"
-            self.quarantined = True
-        
-        elif a == "escalate_incident":
-            self.escalated = True
+            else:
+                action = Action(action_type="escalate_incident", resource_id="incident")
+      
+        obs, reward, done, _ = env.step(action)
 
-        base_score = self._calculate_score()
+        step += 1
+        final_score = round(reward, 2)
 
-        if self.current_difficulty == "easy":
-            score = base_score
-        else:
-            penalty = -0.05 * self.step_count
-            score = base_score + penalty
-        
-        score = max(0.01, min(0.99, score))
+        history.append({
+            "Step": step,
+            "Action": f"{action.action_type} → {action.resource_id}",
+            "Score": final_score
+        })
 
-        self.reward_history.append({"value": score})
+    df1 = pd.DataFrame(history)
 
-        done = score >= 0.95 or self.step_count >= self.max_steps
+    baseline_score = round(run_baseline(difficulty.lower()), 2)
 
-        return self._get_obs(), score, done, {}
+    df2 = pd.DataFrame({
+        "Type": ["Agent", "Baseline"],
+        "Score": [final_score, baseline_score]
+    })
 
-    def _calculate_score(self):
-        score = 0
-        
-        if self.current_difficulty == "easy":
-            # 🔥 ONLY ONE TASK → FIX S3
-            if not self.state["s3_public"]:
-                return 0.99   # FULL SCORE
-        
-            return 0.01
+    alerts = "\n\n".join([json.dumps(a, indent=2) for a in obs.alerts]) if hasattr(obs, "alerts") else ""
+    logs = "\n\n".join([json.dumps(l, indent=2) for l in obs.logs])
 
-        elif self.current_difficulty == "medium":
-            if self.state["iam_key_age"] == 0:
-                score += 0.4
-            if self.state["iam_mfa_enabled"]:
-                score += 0.4
+    return df1, df2, alerts, logs
 
-            return min(score, 0.99)
+with gr.Blocks() as demo:
+    gr.Markdown("# CloudSec-Sim")
 
-        elif self.current_difficulty == "hard":
-            score = 0
-        
-            if self.step_count > 0:
-                score += 0.2
-        
-            if self.investigated:
-                score += 0.2
-        
-            if self.checked_ip:
-                score += 0.2
-        
-            if self.quarantined:
-                score += 0.2
-        
-            if self.escalated:
-                score += 0.2
-        
-            if self.state["sg_port_22"] == "closed":
-                score += 0.1
-        
-            return min(score, 0.99)
-            
-        final_score = max(0.01, min(0.99, score))
-        return final_score
+    alerts_box = gr.Textbox(label="Alerts")
+    logs_box = gr.Textbox(label="Logs")
 
-    def _progress_attack(self):
-        self.time_step += 1
-    
-        if self.scenario == "brute_force":
-            if self.time_step >= 2:
-                self.timeline.append("Multiple failed SSH attempts")
-            if self.time_step >= 3:
-                self.timeline.append("Account compromise suspected")
-    
-        elif self.scenario == "data_exposure":
-            if self.time_step >= 2:
-                self.timeline.append("Large data download detected")
-            if self.time_step >= 3:
-                self.timeline.append("Data exfiltration detected")
-        
-    def _generate_alerts(self):
-        scenario = getattr(self, "scenario", "normal")
-        alerts = []
+    d = gr.Dropdown(["Easy", "Medium", "Hard"], value="Easy")
+    task_text = gr.Markdown()
+    d.change(get_task_info, inputs=d, outputs=task_text)
 
-        if self.state.get("s3_public"):
-            alerts.append({
-                "id": "ALERT-S3",
-                "severity": "CRITICAL", 
-                "mitre": "T1530",
-                "desc": "S3 Bucket is Publicly Accessible",
-                "actions": ["restrict_s3"]
-            })
-    
-        if scenario == "brute_force":
-            alerts.append({
-                "id": "ALERT-SSH",
-                "severity": "HIGH",
-                "mitre": "T1110",
-                "desc": "Brute force detected",
-                "actions": ["check_ip_reputation", "quarantine_host"]
-            })
-        
-        return alerts if alerts else [{"id": "INFO", "severity": "LOW", "desc": "No threat"}]
-            
-    def get_state(self):
-        return {
-            "state": self.state,
-            "step_count": self.step_count,
-            "difficulty": self.current_difficulty
-        }
+    b = gr.Button("Run Simulation")
 
+    t1 = gr.Dataframe()
+    t2 = gr.Dataframe()
 
-env = CloudSecEngine()
+    b.click(run_real_simulation, inputs=d, outputs=[t1, t2, alerts_box, logs_box])
+
+app = gr.mount_gradio_app(app, demo, path="/") 
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=7860)
+
+def main():
+    uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
+
+if __name__ == "__main__":
+    main()
