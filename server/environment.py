@@ -195,7 +195,7 @@ class CloudSecEngine:
             if self.state["iam_mfa_enabled"]:
                 score += 0.4
 
-            return min(score, 0.99)
+            return max(0.01, min(score, 0.99))
 
         elif self.current_difficulty == "hard":
             score = 0
@@ -218,10 +218,9 @@ class CloudSecEngine:
             if self.state["sg_port_22"] == "closed":
                 score += 0.1
         
-            return min(score, 0.99)
+            return max(0.01, min(score, 0.99))
             
-        final_score = max(0.01, min(0.99, score))
-        return final_score
+        return max(0.01, min(score, 0.99))
 
     def _progress_attack(self):
         self.time_step += 1
