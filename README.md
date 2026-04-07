@@ -186,7 +186,7 @@ Clipped to `[0,1]`
 
 ---
 
-# 🧠 Environment Design
+# Environment Design
 
 ## Observation Space
 
