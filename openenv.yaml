@@ -1,0 +1,32 @@
+version: "1.0.0"
+name: "CloudSec-Sim"
+description: "A realistic cloud security simulation where AI agents detect and remediate multi-step vulnerabilities across cloud infrastructure."
+
+entrypoint: "server.app:app"
+
+tags:
+  - "openenv"
+  - "cybersecurity"
+  - "cloud"
+  - "multi-step-reasoning"
+
+tasks:
+  - id: "easy"
+    name: "S3 Bucket Security Remediation"
+    description: "Identify and fix a publicly exposed S3 bucket by restricting access and enabling encryption."
+
+  - id: "medium"
+    name: "IAM Security Hardening"
+    description: "Detect outdated IAM credentials and enforce security policies such as key rotation and MFA."
+
+  - id: "hard"
+    name: "SOC Incident Investigation and Response"
+    description: "Analyze alerts, inspect logs, check IP reputation, and respond appropriately (quarantine or escalate)."
+
+endpoints:
+  reset: "/reset"
+  step: "/step"
+  state: "/state"
+  tasks: "/tasks"
+  grader: "/grader"
+  baseline: "/baseline"
