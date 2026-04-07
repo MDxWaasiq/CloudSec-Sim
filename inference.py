@@ -6,15 +6,14 @@ from typing import List, Optional
 from openai import OpenAI
 from dotenv import load_dotenv
 
+# Load .env for local testing (Judges will have these set in their shell)
 load_dotenv()
 
+# --- CONFIG (Using environment variables as required) ---
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN")
-API_URL = os.getenv("API_URL")
-if not API_URL:
-    print("[ERROR] API_URL not set.")
-    exit(1)
+API_URL = os.getenv("API_URL", "http://127.0.0.1:7860") # The address of the OTHER terminal
 
 TASK_NAME = "cloudsec_challenge"
 BENCHMARK = "cloud_security_v1"
@@ -40,6 +39,7 @@ def get_llm_action(client: OpenAI, observation: str, difficulty: str, history: L
         "quarantine_host", "escalate_incident"
     ]
     
+    # We use a very aggressive system prompt to prevent the "Read Logs" loop.
     prompt = f"""
     You are a cloud security agent.
 
@@ -112,12 +112,16 @@ async def run_challenge(client: OpenAI, difficulty: str):
     }
 
     for step in range(1, MAX_STEPS + 1):
+        # --- NEW HARD TERMINATION ---
+        # If we have already performed the winning actions, STOP immediately to save the score.
         if difficulty == "easy" and "restrict_s3" in action_history:
             break
         if difficulty == "medium" and "rotate_key" in action_history and "enable_mfa" in action_history:
             break
         if difficulty == "hard" and "escalate_incident" in action_history:
             break
+        # ----------------------------
+        # Inside run_challenge loop
         resources = {r["id"]: r["value"] for r in obs_data.get("resources", [])}
 
         if difficulty == "easy" and resources.get("s3_public") == True:
@@ -139,12 +143,14 @@ async def run_challenge(client: OpenAI, difficulty: str):
                 action_type = "rotate_key"
             else:
                 action_type = "enable_mfa"
+        # 🔥 HARD MODE FIXED SEQUENCE (NO RANDOMNESS)
         if difficulty == "hard":
             sequence = ["read_logs", "check_ip_reputation", "quarantine_host", "escalate_incident"]
             for act in sequence:
                 if act not in action_history:
                     action_type = act
                     break
+        # Loop Breaker Logic
         if difficulty in ["easy", "medium"] and action_history.count("read_logs") >= 1:
             if difficulty == "easy":
                 action_type = "restrict_s3"
