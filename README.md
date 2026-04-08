@@ -106,14 +106,10 @@ Scoring in CloudSec-Sim is deterministic and based on the agent’s actions and 
 
 ### Easy
 
-* `s3_public = True` → **0.0**
-* `s3_public = False` → **1.0**
+* `s3_public = True` → **0.01**
+* `s3_public = False` → **0.99**
 * No penalties
-  → Fully binary, single-step task
-
-Why Easy Task is Binary?
-The Easy task is binary because fixing a public S3 bucket is a **critical all-or-nothing issue**—it is either secure or not. This ensures clear evaluation, full reproducibility, and serves as a simple baseline before more complex tasks.
-
+  → single-step task
 ---
 
 ### Medium
