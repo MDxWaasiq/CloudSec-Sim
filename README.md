@@ -98,76 +98,47 @@ Agents receive structured observations:
 
 ### Grading & Reward Logic 
 
-Scoring in CloudSec-Sim is deterministic and based on the agent’s actions and final system state.
+The grader applies a base weight to the environmental reward and penalizes the agent based on step count and task complexity.
 
+General Formula:
+
+final_score = (env_reward × base_weight) - (steps × penalty_factor)
 ---
+1. Easy (S3 Fix)
+Base Weight: 0.90
 
-## Step-Level Reward
+Step Penalty: 0.02 per step
 
-### Easy
+Target Range: 0.80 – 0.99
 
-* `s3_public = True` → **0.01**
-* `s3_public = False` → **0.99**
-* No penalties
-  → single-step task
+Focus: Verifies the agent can perform a single-step remediation (Restricting S3 access).
 ---
+2. Medium (IAM Hardening)
+Base Weight: 0.70
 
-### Medium
+Step Penalty: 0.04 per step
 
-* +0.4 → Key rotated (`iam_key_age = 0`)
-* +0.4 → MFA enabled
-* Penalty: `-0.05 × steps`
+Target Range: 0.60 – 0.72
 
-**Final:**
-
-```
-score = base_score - (0.05 × steps)
-```
-
-Clipped to `[0,1]`
-
+Focus: Rewards the correct sequencing of IAM key rotation and MFA enforcement.
 ---
+3. Hard (SOC Sequence)
+Base Weight: 0.50
 
-### Hard
+Step Penalty: 0.06 per step
 
-Progress-based scoring:
+Target Range: 0.30 – 0.52
 
-* +0.2 → Action started
-* +0.2 → Logs read
-* +0.2 → IP checked
-* +0.2 → Threat contained
-* +0.2 → Incident escalated
-* +0.1 → Ports secured
-
-Penalty:
-
-* `-0.05 × steps`
-
-→ Encourages correct sequence + efficiency
-
+Focus: Protocol compliance. The agent is heavily penalized for skipping "Investigation" and "Analysis" phases (Log reading/IP checks) before responding to the threat.
 ---
+Step-Level Rewards (Environment)
+These are the raw values emitted by the environment before the Grader applies difficulty scaling:
 
-## Final Score (Grader)
+Easy: +1.0 for securing the S3 bucket.
 
-Combines outcome + efficiency:
+Medium: +0.5 for Key Rotation | +0.5 for MFA Enablement.
 
-* Bonus:
-
-  * ≤3 steps → +0.2
-  * ≤6 steps → +0.1
-
-* Penalty:
-
-  * `min(0.2, steps × 0.02)`
-
-**Final:**
-
-```
-final_score = last_reward + bonus - penalty
-```
-
-Clipped to `[0,1]`
-
+Hard: Cumulative rewards (+0.2 each) for: Logs Read → IP Checked → Host Quarantined → Incident Escalated.
 ---
 
 ## Key Points
