@@ -3,7 +3,7 @@ import random
 from datetime import datetime
         
 
-class CloudSecEngine:
+class CloudSecEngine:                #environment setup
     def __init__(self):
         self.max_steps = 10
         self.reset()
@@ -34,7 +34,7 @@ class CloudSecEngine:
         elif self.current_difficulty == "medium":
             self.state = {
                 "s3_public": random.choice([True, False]),
-                "s3_encryption": random.choice([False, True]),
+                "s3_encryption": random.choice([False, True]),                     #random is used for environment setup for changes in problem in env NOT FOR THE SCORE!!!
                 "iam_key_age": random.randint(0, 150),  
                 "iam_mfa_enabled": random.choice([False, True]),
                 "sg_port_22": random.choice(["open", "closed"]),
@@ -184,7 +184,7 @@ class CloudSecEngine:
         
         if self.current_difficulty == "easy":
             if not self.state["s3_public"]:
-                score = 0.99 # Strictly < 1
+                score = 0.99 
             else:
                 score = 0.01
             return max(0.01, min(score, 0.99))
