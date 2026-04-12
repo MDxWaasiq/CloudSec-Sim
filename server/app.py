@@ -78,8 +78,7 @@ def get_baseline():
         "medium": run_baseline("medium"),
         "hard": run_baseline("hard"),
     }
-#------------------------------------------------------------------------------------------------------------------------------------------------
-    
+
 def get_task_info(difficulty):
     info = {
         "Easy": "Fix S3 public access (1-step task)",
@@ -88,94 +87,97 @@ def get_task_info(difficulty):
     }
     return info[difficulty]
 
-
-def run_real_simulation(difficulty):
+def ui_reset(difficulty):
+    """Manually resets the environment and clears history."""
     obs = env.reset(difficulty.lower())
+    state = env.get_state()
+  
+    alerts = "\n\n".join([json.dumps(a, indent=2) for a in getattr(obs, "alerts", [])])
+    logs = "\n\n".join([json.dumps(l, indent=2) for l in getattr(obs, "logs", [])])
+    
+    empty_history = pd.DataFrame(columns=["Step", "Action", "Target", "Score"])
+    
+    return json.dumps(state, indent=2), empty_history, alerts, logs, 0
 
-    history = []
-    done = False
-    step = 0
-    final_score = 0
+def ui_get_state():
+    """Fetches the current raw JSON state."""
+    state = env.get_state()
+    return json.dumps(state, indent=2)
 
-    max_steps = {"Easy": 4, "Medium": 6, "Hard": 8}
+def ui_step(action_type, resource_id, step_count, history_df):
+    """Executes a single manual step in the environment."""
+    if not action_type or not resource_id:
+        return gr.update(), history_df, gr.update(), gr.update(), step_count
 
-    while not done and step < max_steps[difficulty]: 
-        r = {x["id"]: x["value"] for x in obs.resources}
+    action = Action(action_type=action_type, resource_id=resource_id)
+    obs, reward, done, _ = env.step(action)
+    
+    step_count += 1
+    
+    # Update History Table
+    new_row = {"Step": step_count, "Action": action_type, "Target": resource_id, "Score": round(reward, 2)}
+    updated_history = pd.concat([history_df, pd.DataFrame([new_row])], ignore_index=True)
+    
+    state = env.get_state()
+    alerts = "\n\n".join([json.dumps(a, indent=2) for a in getattr(obs, "alerts", [])])
+    logs = "\n\n".join([json.dumps(l, indent=2) for l in getattr(obs, "logs", [])])
 
-        if difficulty == "Easy":
-            if r.get("s3_public"):
-                action = Action(action_type="restrict_s3", resource_id="s3_public")
-            else:
-                break
-
-        elif difficulty == "Medium":
-            choices = []
-            if r.get("iam_key_age", 0) > 0:
-                choices.append(Action(action_type="rotate_key", resource_id="iam_key_age"))
-            
-            if not r.get("iam_mfa_enabled", True):
-                choices.append(Action(action_type="enable_mfa", resource_id="iam_mfa_enabled"))
-            
-            if choices:
-                action = random.choice(choices)
-            else:
-                break
-
-        else:
-
-            if not getattr(env, "investigated", False):
-                action = Action(action_type="read_logs", resource_id="logs")
-
-            elif not getattr(env, "checked_ip", False):
-                action = Action(action_type="check_ip_reputation", resource_id="ip")
-
-            elif getattr(env, "ip_reputation", None) == "malicious":
-                action = Action(action_type="quarantine_host", resource_id="host")
-
-            else:
-                action = Action(action_type="escalate_incident", resource_id="incident")
-      
-        obs, reward, done, _ = env.step(action)
-
-        step += 1
-        final_score = round(reward, 2)
-
-        history.append({
-            "Step": step,
-            "Action": f"{action.action_type} → {action.resource_id}",
-            "Score": final_score
-        })
-
-    df1 = pd.DataFrame(history)
-
-    baseline_score = round(run_baseline(difficulty.lower()), 2)
-
-    df2 = pd.DataFrame({
-        "Type": ["Agent", "Baseline"],
-        "Score": [final_score, baseline_score]
-    })
-
-    alerts = "\n\n".join([json.dumps(a, indent=2) for a in obs.alerts]) if hasattr(obs, "alerts") else ""
-    logs = "\n\n".join([json.dumps(l, indent=2) for l in obs.logs])
-
-    return df1, df2, alerts, logs
+    return json.dumps(state, indent=2), updated_history, alerts, logs, step_count
 
 with gr.Blocks() as demo:
-    gr.Markdown("# CloudSec-Sim")
+    gr.Markdown("# CloudSec-Sim Manual Playground")
+    gr.Markdown("Step-by-step diagnostic interface for agent and environment evaluation.")
 
-    alerts_box = gr.Textbox(label="Alerts")
-    logs_box = gr.Textbox(label="Logs")
+    step_counter = gr.State(0)
+    history_state = gr.State(pd.DataFrame(columns=["Step", "Action", "Target", "Score"]))
 
-    d = gr.Dropdown(["Easy", "Medium", "Hard"], value="Easy")
-    task_text = gr.Markdown()
-    d.change(get_task_info, inputs=d, outputs=task_text)
+    with gr.Row():
+        with gr.Column(scale=1):
+            gr.Markdown("### 1. Environment Controls")
+            difficulty_dd = gr.Dropdown(["Easy", "Medium", "Hard"], value="Easy", label="Difficulty")
+            task_text = gr.Markdown(get_task_info("Easy"))
+            difficulty_dd.change(get_task_info, inputs=difficulty_dd, outputs=task_text)
+            
+            with gr.Row():
+                btn_reset = gr.Button("🔄 Reset Env", variant="secondary")
+                btn_state = gr.Button("🔍 Get State", variant="secondary")
 
-    b = gr.Button("Run Simulation")
+            gr.Markdown("### 2. Manual Action Override")
+            action_dd = gr.Dropdown(
+                choices=["restrict_s3", "rotate_key", "enable_mfa", "read_logs", "check_ip_reputation", "quarantine_host", "escalate_incident"], 
+                label="Action Type"
+            )
+            resource_txt = gr.Textbox(label="Resource ID Target", placeholder="e.g., s3_public or iam_key_age")
+            btn_step = gr.Button("▶ Execute Step", variant="primary")
 
-    t1 = gr.Dataframe()
-    t2 = gr.Dataframe()
+        with gr.Column(scale=2):
+            gr.Markdown("### Live State & Outputs")
+            with gr.Accordion("Raw JSON State", open=True):
+                state_box = gr.Code(language="json", label="env.get_state()")
+            
+            history_table = gr.Dataframe(headers=["Step", "Action", "Target", "Score"], interactive=False)
+            
+            with gr.Row():
+                alerts_box = gr.Textbox(label="Alerts", lines=4)
+                logs_box = gr.Textbox(label="Logs", lines=4)
 
-    b.click(run_real_simulation, inputs=d, outputs=[t1, t2, alerts_box, logs_box])
+    btn_reset.click(
+        fn=ui_reset,
+        inputs=[difficulty_dd],
+        outputs=[state_box, history_table, alerts_box, logs_box, step_counter]
+    )
+
+    btn_state.click(
+        fn=ui_get_state,
+        inputs=[],
+        outputs=[state_box]
+    )
+
+    btn_step.click(
+        fn=ui_step,
+        inputs=[action_dd, resource_txt, step_counter, history_table],
+        outputs=[state_box, history_table, alerts_box, logs_box, step_counter]
+    )
 
 app = gr.mount_gradio_app(app, demo, path="/") 
 
