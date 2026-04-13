@@ -58,20 +58,15 @@ CloudSec-Sim/
 ├── server/
 │   ├── app.py             
 │   └── environment.py      
-│
 ├── models.py           
 ├── tasks.py                
-│
 ├── baseline.py            
 ├── inference.py            
-│
 ├── openenv.yaml           
 ├── Dockerfile             
-│
 ├── requirements.txt        
 ├── pyproject.toml         
 ├── uv.lock                 
-│
 └── README.md               
 ```
 --- 
