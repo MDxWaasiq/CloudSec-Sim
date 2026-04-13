@@ -15,11 +15,6 @@ tags:
 
 * CloudSec-Sim is a real-world cloud security simulation built on OpenEnv, modeling how SOC analysts detect and respond to threats.
 
-* Cloud security failures are a major real-world problem:
-
-  * IBM (2023): Average breach cost = **$4.45 million**
-  * Verizon DBIR: **Credential misuse + misconfigurations** are leading causes of breaches
-
 * Existing AI environments are:
 
   * Too simple
